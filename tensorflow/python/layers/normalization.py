@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
@@ -184,6 +185,12 @@ class BatchNormalization(base.Layer):
       else:
         self._data_format = 'NHWC'
 
+    # Raise parameters of fp16 batch norm to fp32
+    if self.dtype == dtypes.float16:
+        param_dtype = dtypes.float32
+    else:
+        param_dtype = self.dtype or dtypes.float32
+
     param_dim = input_shape[axis]
     if not param_dim.value:
       raise ValueError('Input has undefined `axis` dimension. Input shape: ',
@@ -198,6 +205,7 @@ class BatchNormalization(base.Layer):
     if self.scale:
       self.gamma = self.add_variable(name='gamma',
                                      shape=(param_dim,),
+                                     dtype=param_dtype,
                                      initializer=self.gamma_initializer,
                                      regularizer=self.gamma_regularizer,
                                      constraint=self.gamma_constraint,
@@ -205,11 +213,14 @@ class BatchNormalization(base.Layer):
     else:
       self.gamma = None
       if self.fused:
-        self._gamma_const = array_ops.constant(1.0, shape=(param_dim,))
+        self._gamma_const = array_ops.constant(1.0,
+                                               dtype=param_dtype,
+                                               shape=(param_dim,))
 
     if self.center:
       self.beta = self.add_variable(name='beta',
                                     shape=(param_dim,),
+                                    dtype=param_dtype,
                                     initializer=self.beta_initializer,
                                     regularizer=self.beta_regularizer,
                                     constraint=self.beta_constraint,
@@ -217,7 +228,9 @@ class BatchNormalization(base.Layer):
     else:
       self.beta = None
       if self.fused:
-        self._beta_const = array_ops.constant(0.0, shape=(param_dim,))
+        self._beta_const = array_ops.constant(0.0,
+                                              dtype=param_dtype,
+                                              shape=(param_dim,))
 
     # Disable variable partitioning when creating the moving mean and variance
     try:
@@ -229,11 +242,13 @@ class BatchNormalization(base.Layer):
       self.moving_mean = self.add_variable(
           name='moving_mean',
           shape=(param_dim,),
+          dtype=param_dtype,
           initializer=self.moving_mean_initializer,
           trainable=False)
       self.moving_variance = self.add_variable(
           name='moving_variance',
           shape=(param_dim,),
+          dtype=param_dtype,
           initializer=self.moving_variance_initializer,
           trainable=False)
       self._one_minus_decay = 1.0 - self.momentum
@@ -248,6 +263,7 @@ class BatchNormalization(base.Layer):
         def _renorm_variable(name, shape):
           var = self.add_variable(name=name,
                                   shape=shape,
+                                  dtype=param_dtype,
                                   initializer=init_ops.zeros_initializer(),
                                   trainable=False)
           return var
